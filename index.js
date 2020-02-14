@@ -97,14 +97,17 @@ var Stats = function() {
     this.addParticipantsInSpace = function() {
         logger.info('[APP]: Adding conversation participants in Space');
 
-        //TODO filter out bot user
-        // if (participart.userId === botUserId) {
-        //     conversationParticipants.splice(idx, 1);
-        //     return true;
-        // }
+        // Exclude the bot user from the conference participants list
+        conversationParticipants.find(function (participart, idx) {
+            if (participart.userId === botUserId) {
+                conversationParticipants.splice(idx, 1);
+                return true;
+            }
+            return false;
+        });
 
-        
-        logger.info('[APP]' + conversationParticipants.length);
+
+        logger.info('[APP]: Number of conversation particapants' + conversationParticipants.length);
         return;
     };
 
