@@ -107,7 +107,7 @@ var Stats = function() {
         });
 
 
-        logger.info('[APP]: Number of conversation particapants' + conversationParticipants.length);
+        logger.info('[APP]: Number of conversation particapants: ' + conversationParticipants.length);
         return;
     };
 
