@@ -34,11 +34,13 @@ if (process.env.http_proxy) {
     logger.info('Using proxy ${process.env.http_proxy}');
 }
 
-var Stats = function() {
+var SpacesSync = function() {
 
     var client;
     var conversationId;
+    var spaceId;
     var conversationParticipants = [];
+    var spaceParticipants = [];
     var botUserId;
 
 
@@ -57,6 +59,30 @@ var Stats = function() {
                     if (res.hasMore) {
                         return fetchAllConverationParticipants(conversationId, res.searchPointer);
                     }
+                });
+    }
+
+    function fetchAllSpaceParticipants(spaceId, page) {
+        var options = {
+            numberOfResults: 100,
+            sortBy: "DISPLAY_NAME",
+            sortOrder: "ASCENDING"
+        };
+
+        if (page) {
+            options.pagePointer = page;
+        }
+        return client.getSpaceParticipants(spaceId, options)
+                .then(function (res) {
+                    logger.info('[APP]: response' + res);
+                    if (res.participants.length > 0 ) {
+                        spaceParticipants = spaceParticipants.concat(res.participants);
+                    }
+                    if (res.hasMore) {
+                        return fetchAllSpaceParticipants(spaceId, res.searchPointer);
+                    }
+                }).catch(function(err) {
+                    logger.info('[APP]: error' + err);
                 });
     }
 
@@ -94,6 +120,33 @@ var Stats = function() {
         return fetchAllConverationParticipants(conversationId);
     };
 
+    this.fetchSpaceParticipants = function() {
+        logger.info('[APP]: Fetching all space participants');
+        spaceId = config.spaceId;
+
+        if (!spaceId) {
+            logger.error('[APP]: spaceId not provided in config.json');
+            throw 'spaceId not provided in config.json';
+        }
+
+        return fetchAllSpaceParticipants(spaceId);
+    };
+
+    this.findDelta = function() {
+        logger.info('[APP]: Number of users in Space: ' + spaceParticipants);
+
+        // function comparer(inputArray){
+        //     return function(currentElement){
+        //       return inputArray.filter(function(other){
+        //         return other.userId === currentElement.userId;
+        //       }).length == 0;
+        //     }
+        //   }
+          
+        //   var onlyInA = a.filter(comparer(b));
+        //   var onlyInB = b.filter(comparer(a));
+    };
+
     this.addParticipantsInSpace = function() {
         logger.info('[APP]: Adding conversation participants in Space');
 
@@ -119,12 +172,15 @@ var Stats = function() {
 };
 
 function run() {
-    var stats = new Stats();
+    var spacesSync = new SpacesSync();
 
-    stats.logon()
-        .then(stats.fetchConversationParticipants)
-        .then(stats.addParticipantsInSpace)
-        .then(stats.terminate)
+    spacesSync.logon()
+        .then(spacesSync.fetchConversationParticipants)
+        .then(spacesSync.fetchSpaceParticipants)
+        .then(spacesSync.findDelta)
+        .then(spacesSync.addParticipantsInSpace)
+        .then(spacesSync.removeParticipantsInSpace)
+        .then(spacesSync.terminate)
         .catch(function (err) {
             var error = new Error(err);
             logger.error('[APP]: Error: ' + error.message);
