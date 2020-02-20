@@ -34,6 +34,9 @@ if (process.env.http_proxy) {
     logger.info('Using proxy ${process.env.http_proxy}');
 }
 
+var NEW_USERS_FILE_NAME = 'newUsers.txt';
+var REMOVED_USERS_FILE_NAME = 'removedUsers.txt';
+
 var SpacesSync = function() {
 
     var client;
@@ -41,7 +44,8 @@ var SpacesSync = function() {
     var spaceId;
     var conversationParticipants = [];
     var spaceParticipants = [];
-    var botUserId;
+    var usersToBeAddedInSpace;
+    var usersToBeRemovedFromSpace;
 
 
     function fetchAllConverationParticipants(conversationId, page) {
@@ -73,17 +77,22 @@ var SpacesSync = function() {
             options.pagePointer = page;
         }
         return client.getSpaceParticipants(spaceId, options)
-                .then(function (res) {
-                    logger.info('[APP]: response' + res);
-                    if (res.participants.length > 0 ) {
-                        spaceParticipants = spaceParticipants.concat(res.participants);
-                    }
-                    if (res.hasMore) {
-                        return fetchAllSpaceParticipants(spaceId, res.searchPointer);
-                    }
-                }).catch(function(err) {
-                    logger.info('[APP]: error' + err);
-                });
+            .then(function (res) {
+                if (res.participants.length > 0 ) {
+                    spaceParticipants = spaceParticipants.concat(res.participants);
+                }
+                if (res.hasMore) {
+                    return fetchAllSpaceParticipants(spaceId, res.searchPointer);
+                }
+            });
+    }
+
+    function compareUserLists(inputArray){
+        return function(currentElement){
+          return inputArray.filter(function(other){
+            return other.userId === currentElement.userId;
+          }).length == 0;
+        };
     }
 
     this.logon = function() {
@@ -104,7 +113,6 @@ var SpacesSync = function() {
         return client.logon()
             .then(function (user) {
                 logger.info('[APP]: Logon on as ' + user.emailAddress);
-                botUserId = user.userId;
             });
     };
 
@@ -133,35 +141,77 @@ var SpacesSync = function() {
     };
 
     this.findDelta = function() {
-        logger.info('[APP]: Number of users in Space: ' + spaceParticipants);
-
-        // function comparer(inputArray){
-        //     return function(currentElement){
-        //       return inputArray.filter(function(other){
-        //         return other.userId === currentElement.userId;
-        //       }).length == 0;
-        //     }
-        //   }
-          
-        //   var onlyInA = a.filter(comparer(b));
-        //   var onlyInB = b.filter(comparer(a));
+        logger.info('[APP]: Finding delta in users');  
+        usersToBeAddedInSpace = conversationParticipants.filter(compareUserLists(spaceParticipants));
+        usersToBeRemovedFromSpace = spaceParticipants.filter(compareUserLists(conversationParticipants));
+        logger.info('[APP]: Number of users to be added in space: ' + usersToBeAddedInSpace.length);
+        logger.info('[APP]: Number of users to be removed from space: ' + usersToBeRemovedFromSpace.length);
+        return Promise.resolve();
     };
 
     this.addParticipantsInSpace = function() {
-        logger.info('[APP]: Adding conversation participants in Space');
+        logger.info('[APP]: Adding users in space');
 
-        // Exclude the bot user from the conference participants list
-        conversationParticipants.find(function (participart, idx) {
-            if (participart.userId === botUserId) {
-                conversationParticipants.splice(idx, 1);
-                return true;
-            }
-            return false;
-        });
+        if (usersToBeAddedInSpace.length > 0) {
+            var streamAdded = fs.createWriteStream(NEW_USERS_FILE_NAME);
+            return new Promise(function(resolve, reject) {
+                var userIdsToBeAdded;
+                streamAdded.on('finish', function () {
+                    logger.info('[APP]: Successfully created new file ' + NEW_USERS_FILE_NAME);
+                    resolve(userIdsToBeAdded);
+                });
 
+                userIdsToBeAdded = usersToBeAddedInSpace.map(function(user) {
+                    logger.info('[APP]: ---> user to be added: ' + user.firstName + " " + user.lastName);
+                    streamAdded.write(user.firstName + " " + user.lastName);
+                    return user.userId;
+                });
 
-        logger.info('[APP]: Number of conversation particapants: ' + conversationParticipants.length);
-        return;
+                streamAdded.end();
+            })
+            .then(function(userIdsToBeAdded) {
+                return client.addSpaceParticipants(spaceId, userIdsToBeAdded)
+                .then(function () {
+                    logger.info('[APP]: Successfully added new users');
+                });
+            });
+        } else {
+            logger.info('[APP]: No new user(s) need to be added in Space');
+            return Promise.resolve();
+        }
+    };
+
+    this.removeParticipantsFromSpace = function() {
+        logger.info('[APP]: Removing users from space');
+
+        if (usersToBeRemovedFromSpace.length > 0) {
+            var streamRemoved = fs.createWriteStream(REMOVED_USERS_FILE_NAME);
+
+            return new Promise(function(resolve, reject) {
+                var userIdsToBeRemoved;
+                streamRemoved.on('finish', function () {
+                    logger.info('[APP]: Successfully created new file ' + NEW_USERS_FILE_NAME);
+                    resolve(userIdsToBeRemoved);
+                });
+
+                userIdsToBeRemoved = usersToBeRemovedFromSpace.map(function(user) {
+                    logger.info('[APP]: ---> user to be removed: ' + user.firstName + " " + user.lastName);
+                    streamRemoved.write(user.firstName + " " + user.lastName);
+                    return user.userId;
+                });
+
+                streamRemoved.end();
+            })
+            .then(function(userIdsToBeRemoved) {
+                return client.removeSpaceParticipants(spaceId, userIdsToBeRemoved)
+                    .then(function (res) {
+                        logger.info('[APP]: Successfully removed users');
+                    });
+            });
+        } else {
+            logger.info('[APP]: No new user(s) need to be removed from Space');
+            return Promise.resolve();
+        }
     };
 
     this.terminate = function() {
@@ -179,7 +229,7 @@ function run() {
         .then(spacesSync.fetchSpaceParticipants)
         .then(spacesSync.findDelta)
         .then(spacesSync.addParticipantsInSpace)
-        .then(spacesSync.removeParticipantsInSpace)
+        .then(spacesSync.removeParticipantsFromSpace)
         .then(spacesSync.terminate)
         .catch(function (err) {
             var error = new Error(err);
