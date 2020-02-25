@@ -1,9 +1,9 @@
 {
     "bot": {
-        "client_id": "261c878400ac40b68209453cbd0a6424",
-        "client_secret": "aec4110b4d024562b2dae3b1abdcfc6d"
+        "client_id": "f5c00a59f59c47d49005e498ec0da8e7",
+        "client_secret": "72681e85d9f84ca0bacf1662ec856879"
     },
-    "domain": "10.1.62.237",
-    "conversationId": "57af7ced-e2ac-40af-878c-0cc7fc2d7902",
-    "spaceId": "b923caa1-f25a-43fe-b428-bb06fbc9769e"
+    "domain": "10.14.249.111",
+    "conversationId": "bb1166aa-0950-4114-9e58-efb616dac320",
+    "spaceId": "7eb7d7f7-9aa1-4f09-90a6-57db33c8b549"
 }
