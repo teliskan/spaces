@@ -31,13 +31,16 @@ var Circuit = require('circuit-sdk');
 if (process.env.http_proxy) {
     var HttpsProxyAgent = require('https-proxy-agent');
     Circuit.NodeSDK.proxyAgent = new HttpsProxyAgent(url.parse(process.env.http_proxy));
-    logger.info('Using proxy ${process.env.http_proxy}');
+    logger.info('[APP]: Using proxy ${process.env.http_proxy}');
 }
 
 var NEW_USERS_FILE_NAME = 'newUsers.txt';
 var REMOVED_USERS_FILE_NAME = 'removedUsers.txt';
 
 var SpacesSync = function() {
+
+    var Constants = Circuit.Constants;
+    var SCOPES = 'READ_CONVERSATIONS,READ_USER,READ_USER_PROFILE,READ_SPACE,WRITE_SPACE';
 
     var client;
     var conversationId;
@@ -46,7 +49,21 @@ var SpacesSync = function() {
     var spaceParticipants = [];
     var usersToBeAddedInSpace;
     var usersToBeRemovedFromSpace;
+    var clientApiHandler;
 
+    function apiError(err, reject, treatNoResultAsEmptyList, postFn) {
+        if (err === Constants.ReturnCode.NO_RESULT && treatNoResultAsEmptyList) {
+            return false;
+        }
+        if (err) {
+            var lastError = clientApiHandler.getLastError();
+            postFn && postFn(lastError);
+            lastError && delete lastError.errObj;
+            reject(lastError);
+            return true;
+        }
+        return false;
+    }
 
     function fetchAllConverationParticipants(conversationId, page) {
         var options;
@@ -66,6 +83,15 @@ var SpacesSync = function() {
                 });
     }
 
+    function getSpaceParticipants(spaceId, queryData) {
+        return new Promise(function (resolve, reject) {
+            clientApiHandler.getSpaceParticipants(spaceId, queryData, function (err, spaceParticipants) {
+                if (apiError(err, reject)) { return; }
+                resolve(spaceParticipants || []);
+            });
+        });
+    }
+
     function fetchAllSpaceParticipants(spaceId, page) {
         var options = {
             numberOfResults: 100,
@@ -76,15 +102,20 @@ var SpacesSync = function() {
         if (page) {
             options.pagePointer = page;
         }
-        return client.getSpaceParticipants(spaceId, options)
-            .then(function (res) {
-                if (res.participants.length > 0 ) {
-                    spaceParticipants = spaceParticipants.concat(res.participants);
-                }
-                if (res.hasMore) {
-                    return fetchAllSpaceParticipants(spaceId, res.searchPointer);
-                }
+        return new Promise(function (resolve, reject) {
+            clientApiHandler.getSpaceParticipants(spaceId, options, function (err, spaceParticipants) {
+                if (apiError(err, reject)) { return; }
+                resolve(spaceParticipants || []);
             });
+        })
+        .then(function (res) {
+            if (res.participants.length > 0 ) {
+                spaceParticipants = spaceParticipants.concat(res.participants);
+            }
+            if (res.hasMore) {
+                return fetchAllSpaceParticipants(spaceId, res.searchPointer);
+            }
+        });
     }
 
     function compareUserLists(inputArray){
@@ -105,10 +136,11 @@ var SpacesSync = function() {
         client = new Circuit.Client({
             client_id: bot.client_id,
             client_secret: bot.client_secret,
-            domain: config.domain
+            domain: config.domain,
+            scope: SCOPES
         });
 
-        //self.addEventListeners(client);  // register evt listeners
+        clientApiHandler = client._clientApiHandler;
 
         return client.logon()
             .then(function (user) {
@@ -170,9 +202,20 @@ var SpacesSync = function() {
                 streamAdded.end();
             })
             .then(function(userIdsToBeAdded) {
-                return client.addSpaceParticipants(spaceId, userIdsToBeAdded)
-                .then(function () {
-                    logger.info('[APP]: Successfully added new users');
+                return new Promise(function(resolve, reject) {
+                    var participants = userIdsToBeAdded.map(function (userId) {
+                        return {
+                            userId: userId,
+                            role: null
+                        };
+                    });
+                    clientApiHandler.clientApiHandler.addSpaceParticipants(spaceId, participants, function (err) {
+                        if (apiError(err, reject)) {
+                            return;
+                        }
+                        logger.info('[APP]: Successfully added new users');
+                        resolve();
+                    });
                 });
             });
         } else {
@@ -203,10 +246,15 @@ var SpacesSync = function() {
                 streamRemoved.end();
             })
             .then(function(userIdsToBeRemoved) {
-                return client.removeSpaceParticipants(spaceId, userIdsToBeRemoved)
-                    .then(function (res) {
+                return new Promise(function(resolve, reject) {
+                    clientApiHandler.removeSpaceParticipants(spaceId, userIdsToBeRemoved, function (err) {
+                        if (apiError(err, reject)) {
+                            return;
+                        }
                         logger.info('[APP]: Successfully removed users');
+                        resolve();
                     });
+                });
             });
         } else {
             logger.info('[APP]: No new user(s) need to be removed from Space');
