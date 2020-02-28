@@ -34,9 +34,6 @@ if (process.env.http_proxy) {
     logger.info('[APP]: Using proxy ${process.env.http_proxy}');
 }
 
-var NEW_USERS_FILE_NAME = 'newUsers.txt';
-var REMOVED_USERS_FILE_NAME = 'removedUsers.txt';
-
 var SpacesSync = function() {
 
     var Constants = Circuit.Constants;
@@ -50,6 +47,9 @@ var SpacesSync = function() {
     var usersToBeAddedInSpace;
     var usersToBeRemovedFromSpace;
     var clientApiHandler;
+
+
+    var fileExecutionTimeStamp = new Date().toISOString();
 
     function apiError(err, reject, treatNoResultAsEmptyList, postFn) {
         if (err === Constants.ReturnCode.NO_RESULT && treatNoResultAsEmptyList) {
@@ -185,17 +185,19 @@ var SpacesSync = function() {
         logger.info('[APP]: Adding users in space');
 
         if (usersToBeAddedInSpace.length > 0) {
+            var NEW_USERS_FILE_NAME = 'newUsers' + '_' + fileExecutionTimeStamp + '.txt';
+
             var streamAdded = fs.createWriteStream(NEW_USERS_FILE_NAME);
             return new Promise(function(resolve, reject) {
                 var userIdsToBeAdded;
                 streamAdded.on('finish', function () {
-                    logger.info('[APP]: Successfully created new file ' + NEW_USERS_FILE_NAME);
+                    logger.info('[APP]: Created report ' + NEW_USERS_FILE_NAME);
                     resolve(userIdsToBeAdded);
                 });
 
                 userIdsToBeAdded = usersToBeAddedInSpace.map(function(user) {
                     logger.info('[APP]: ---> user to be added: ' + user.firstName + " " + user.lastName);
-                    streamAdded.write(user.firstName + " " + user.lastName);
+                    streamAdded.write(user.firstName + " " + user.lastName + '\n');
                     return user.userId;
                 });
 
@@ -209,7 +211,7 @@ var SpacesSync = function() {
                             role: null
                         };
                     });
-                    clientApiHandler.clientApiHandler.addSpaceParticipants(spaceId, participants, function (err) {
+                    clientApiHandler.addSpaceParticipants(spaceId, participants, function (err) {
                         if (apiError(err, reject)) {
                             return;
                         }
@@ -228,18 +230,20 @@ var SpacesSync = function() {
         logger.info('[APP]: Removing users from space');
 
         if (usersToBeRemovedFromSpace.length > 0) {
+            var REMOVED_USERS_FILE_NAME = 'removedUsers' + '_' + fileExecutionTimeStamp + '.txt';
+
             var streamRemoved = fs.createWriteStream(REMOVED_USERS_FILE_NAME);
 
             return new Promise(function(resolve, reject) {
                 var userIdsToBeRemoved;
                 streamRemoved.on('finish', function () {
-                    logger.info('[APP]: Successfully created new file ' + NEW_USERS_FILE_NAME);
+                    logger.info('[APP]: Created report ' + REMOVED_USERS_FILE_NAME);
                     resolve(userIdsToBeRemoved);
                 });
 
                 userIdsToBeRemoved = usersToBeRemovedFromSpace.map(function(user) {
                     logger.info('[APP]: ---> user to be removed: ' + user.firstName + " " + user.lastName);
-                    streamRemoved.write(user.firstName + " " + user.lastName);
+                    streamRemoved.write(user.firstName + " " + user.lastName  + '\n');
                     return user.userId;
                 });
 
