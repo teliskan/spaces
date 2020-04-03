@@ -3,7 +3,7 @@
 This Circuit bot application syncs the members of a Circuit Space with the members of a Circuit conversation. In order to make it work you need the bot user need to be member both the Circuit conversation and space. The bot compares the list of participants from the Circuit conversation with the list of participants from the Space and based on the diff it adds/removes users from the Space.
 
 # Steps to execute
-1. Install node.js (https://nodejs.org/en/download/). Make sure it is added in your system PATH variable. You can check that it is installed with success by executing "node -v" in a Windows
+1. Install node.js (https://nodejs.org/en/download/). Make sure your system PATH variable is properly updated so that you can use node from Windows command prompt (usually Windows installer will prompt you to add it automatically). You can check that it is installed with success and PATH variable is prorerly configured by executing "node -v" in a Windows command prompt
 2. Download the bot from github 
      2.1. Visit https://github.com/teliskan/spaces
      2.2. Click "Clone or download"
